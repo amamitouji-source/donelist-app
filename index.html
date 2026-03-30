@@ -1,0 +1,207 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { motion } from "framer-motion";
+
+export default function DoneListApp() {
+  const [items, setItems] = useState([]);
+  const [input, setInput] = useState("");
+  const [view, setView] = useState("list");
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(null);
+
+  const todayDate = new Date();
+  const today = todayDate.toLocaleDateString();
+
+  // PWA 安装监听
+  useEffect(() => {
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    });
+  }, []);
+
+  const handleInstall = () => {
+    if (installPrompt) installPrompt.prompt();
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem("done-list");
+    if (saved) setItems(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("done-list", JSON.stringify(items));
+  }, [items]);
+
+  const addItem = () => {
+    if (!input.trim()) return;
+    setItems([{ id: Date.now(), text: input, date: today }, ...items]);
+    setInput("");
+  };
+
+  const deleteItem = (id) => {
+    setItems(items.filter((item) => item.id !== id));
+  };
+
+  const grouped = items.reduce((acc, item) => {
+    if (!acc[item.date]) acc[item.date] = [];
+    acc[item.date].push(item);
+    return acc;
+  }, {});
+
+  const totalCount = items.length;
+  const uniqueDays = Object.keys(grouped).length;
+
+  const getStreak = () => {
+    let streak = 0;
+    const dates = Object.keys(grouped)
+      .map((d) => new Date(d))
+      .sort((a, b) => b - a);
+
+    let current = new Date();
+
+    for (let i = 0; i < dates.length; i++) {
+      const diff = Math.floor((current - dates[i]) / 86400000);
+      if (diff === 0 || diff === 1) {
+        streak++;
+        current = dates[i];
+      } else break;
+    }
+    return streak;
+  };
+
+  const streak = getStreak();
+
+  const generateSummary = () => {
+    const todayItems = grouped[today] || [];
+    if (todayItems.length === 0) return "今天还没有完成事项。";
+
+    const texts = todayItems.map((i) => i.text).slice(0, 3);
+
+    return `今天完成了 ${todayItems.length} 件事：${texts.join("，")}。是有在慢慢变好的一天。`;
+  };
+
+  const getMonthDays = () => {
+    const year = todayDate.getFullYear();
+    const month = todayDate.getMonth();
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const days = [];
+
+    for (let i = 0; i < firstDay; i++) days.push(null);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = new Date(year, month, d).toLocaleDateString();
+      days.push({ day: d, dateStr });
+    }
+
+    return days;
+  };
+
+  const monthDays = getMonthDays();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100 flex items-center justify-center p-6">
+      <Card className="w-full max-w-md bg-white/80 backdrop-blur-xl shadow-2xl rounded-3xl border border-white/40">
+        <CardContent className="p-6">
+          <h1 className="text-xl font-semibold text-gray-700 mb-4 text-center tracking-tight">
+            Done List
+          </h1>
+
+          {/* 安装按钮 */}
+          {installPrompt && (
+            <Button onClick={handleInstall} className="w-full mb-3">
+              安装到手机
+            </Button>
+          )}
+
+          <div className="flex justify-between text-xs text-gray-400 mb-4">
+            <span>{totalCount}</span>
+            <span>{uniqueDays} days</span>
+            <span>{streak} 🔥</span>
+          </div>
+
+          <div className="bg-white/60 border border-gray-100 rounded-xl p-3 text-sm text-gray-600 mb-4 leading-relaxed">
+            {generateSummary()}
+          </div>
+
+          <div className="flex gap-2 mb-4 justify-center">
+            <Button size="sm" variant={view === "list" ? "default" : "outline"} onClick={() => setView("list")}>List</Button>
+            <Button size="sm" variant={view === "calendar" ? "default" : "outline"} onClick={() => setView("calendar")}>Calendar</Button>
+          </div>
+
+          {view === "list" && (
+            <div className="flex gap-2 mb-4">
+              <Input
+                placeholder="今天完成了什麼..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addItem()}
+                className="rounded-xl"
+              />
+              <Button onClick={addItem} className="rounded-xl">+</Button>
+            </div>
+          )}
+
+          {view === "list" && (
+            <div className="space-y-5 max-h-[300px] overflow-y-auto">
+              {Object.keys(grouped).map((date) => (
+                <div key={date}>
+                  <p className="text-xs text-gray-400 mb-2">{date}</p>
+                  <div className="space-y-2">
+                    {grouped[date].map((item) => (
+                      <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="group bg-white/70 border border-gray-100 rounded-xl px-3 py-2 flex justify-between items-center">
+                        <span className="text-sm text-gray-700">{item.text}</span>
+                        <button onClick={() => deleteItem(item.id)} className="opacity-0 group-hover:opacity-100 text-xs text-gray-300 hover:text-red-400">×</button>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {view === "calendar" && (
+            <div>
+              <div className="grid grid-cols-7 gap-2 text-xs mb-3">
+                {monthDays.map((d, i) => (
+                  <div key={i} onClick={() => d && setSelectedDate(d.dateStr)} className={`h-10 flex items-center justify-center rounded-xl cursor-pointer ${d && grouped[d.dateStr] ? "bg-blue-100 text-blue-600" : "bg-white/40 text-gray-300"}`}>
+                    {d ? d.day : ""}
+                  </div>
+                ))}
+              </div>
+
+              {selectedDate && (
+                <div className="mt-3 bg-white/70 border border-gray-100 rounded-xl p-3">
+                  <p className="text-xs text-gray-400 mb-2">{selectedDate}</p>
+                  {(grouped[selectedDate] || []).map((item) => (
+                    <div key={item.id} className="text-sm text-gray-700">{item.text}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/*
+===== 关键：如何真正安装到手机 =====
+
+1️⃣ 部署到线上（必须）
+推荐：
+- Vercel
+- Netlify
+
+2️⃣ 添加 manifest.json（public目录）
+
+3️⃣ 手机打开网址 → 点击「添加到主屏幕」
+
+👉 这就是一个真正的App（PWA）
+*/
